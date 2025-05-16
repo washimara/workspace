@@ -1,0 +1,3 @@
+name = "ggfinder"
+pages_build_output_dir = "client/build"
+compatibility_date = "2025-05-16"
