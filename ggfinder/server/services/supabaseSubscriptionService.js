@@ -64,7 +64,7 @@ class SupabaseSubscriptionService {
       console.log('Subscription record created:', subscription);
 
       // Update user's subscription status directly in users table
-      const { data: user, error: userError } = await serviceSupababase
+      const { data: user, error: userError } = await serviceSupabase
         .from('users')
         .update({
           subscription_status: 'premium',

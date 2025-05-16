@@ -33,7 +33,8 @@ exports.register = async (req, res) => {
       user: {
         _id: user._id,
         name: user.name,
-        email: user.email
+        email: user.email,
+        goodKarma: user.goodKarma || 0
       }
     });
   } catch (error) {
@@ -65,20 +66,21 @@ exports.login = async (req, res) => {
       user: {
         _id: user._id,
         name: user.name,
-        email: user.email
+        email: user.email,
+        goodKarma: user.goodKarma || 0
       }
     });
   } catch (error) {
     console.error("Login error:", error.message);
-    
+
     // Handle email confirmation errors specifically
     if (error.message.includes("Email not confirmed")) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         message: 'Email not confirmed. Please check your email for a confirmation link or try again later.',
         errorCode: 'EMAIL_NOT_CONFIRMED'
       });
     }
-    
+
     res.status(500).json({ message: error.message });
   }
 };
@@ -130,22 +132,38 @@ exports.refreshToken = async (req, res) => {
 // Get current user
 exports.getCurrentUser = async (req, res) => {
   try {
-    const user = await SupabaseUserService.getById(req.user.userId);
+    // User is already attached to req by the auth middleware
+    if (!req.user) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
 
-    if (!user) {
+    // Get user from Supabase to ensure we have the latest data including goodKarma
+    const { data: userData, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', req.user.id)
+      .single();
+
+    if (error) {
+      return res.status(500).json({ message: error.message });
+    }
+
+    if (!userData) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    res.status(200).json({
+    // Return user data including goodKarma
+    res.json({
       user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        has_premium_access: user.has_premium_access || false
+        _id: userData.id,
+        email: userData.email,
+        name: userData.name,
+        has_premium_access: userData.has_premium_access || false,
+        goodKarma: userData.goodKarma || 0 // Ensure goodKarma is included
       }
     });
   } catch (error) {
-    console.error("Get current user error:", error.message);
+    console.error('Error in getCurrentUser:', error);
     res.status(500).json({ message: error.message });
   }
 };

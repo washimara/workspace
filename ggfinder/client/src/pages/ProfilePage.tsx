@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,19 +9,39 @@ import { DonationHistory } from "@/components/DonationHistory";
 import { SubscriptionForm } from "@/components/SubscriptionForm";
 import { SubscriptionList } from "@/components/SubscriptionList";
 import { SubscriptionStatus } from "@/components/SubscriptionStatus";
+import { Award } from "lucide-react"; // Import Award icon for karma
+import { useAuth } from "@/contexts/AuthContext";
+import { ProfileCard } from "@/components/ui/profile-card";
 
 export function ProfilePage() {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState("posts");
   const [refreshKey, setRefreshKey] = useState(0);
+  const { user } = useAuth();
 
   const handleRefresh = useCallback(() => {
     setRefreshKey(prev => prev + 1);
   }, []);
 
+  // Early return if user is not loaded
+  if (!user) {
+    return <div className="container mx-auto py-8">Loading...</div>;
+  }
+
   return (
     <div className="container mx-auto py-8">
-      <h1 className="text-4xl font-bold mb-8">{t("profile")}</h1>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+        <h1 className="text-4xl font-bold">{t("profile")}</h1>
+        
+        {/* Display Good Karma prominently in the header */}
+        <div className="flex items-center gap-2 bg-amber-100 dark:bg-amber-900/30 px-4 py-2 rounded-lg">
+          <Award className="h-6 w-6 text-amber-500" />
+          <div>
+            <span className="text-xs text-muted-foreground block">{t("goodKarma")}</span>
+            <span className="font-bold text-xl">{user.goodKarma || 0}</span>
+          </div>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="md:col-span-2">
@@ -53,7 +73,7 @@ export function ProfilePage() {
                   </CardContent>
                 </Card>
 
-                {/* Subscription Form - Added back */}
+                {/* Subscription Form */}
                 <Card>
                   <CardHeader>
                     <CardTitle>{t("premiumSubscription")}</CardTitle>
@@ -91,30 +111,19 @@ export function ProfilePage() {
         </div>
 
         <div>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("userProfile")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {/* User profile content here */}
-              <div className="space-y-4">
-                <div>
-                  <h3 className="font-medium">{t("memberSince")}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date().toLocaleDateString()}
-                  </p>
-                </div>
-                <div>
-                  <h3 className="font-medium">{t("posts")}</h3>
-                  <p className="text-sm text-muted-foreground">1 {t("active")}</p>
-                </div>
-                <div>
-                  <h3 className="font-medium">{t("subscriptionStatus")}</h3>
-                  <SubscriptionStatus key={`subscription-status-${refreshKey}`} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Use the new ProfileCard component to display user info including Good Karma */}
+          <ProfileCard user={user} />
+          
+          <div className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("subscriptionStatus")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <SubscriptionStatus key={`subscription-status-${refreshKey}`} />
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>

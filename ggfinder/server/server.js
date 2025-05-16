@@ -6,6 +6,7 @@ const cors = require("cors");
 const path = require("path");
 const { connectDB, checkSupabaseConnection } = require('./config/database');
 const setupSupabase = require('./scripts/setupSupabase');
+const initHealthCheckTable = require('./scripts/initHealthCheck');
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -21,9 +22,10 @@ const PORT = process.env.PORT || 3000;
 
 // Set up middleware
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: process.env.ALLOWED_ORIGINS ? 
+    process.env.ALLOWED_ORIGINS.split(',') : 
+    ['http://localhost:5173', 'http://localhost:3000', '*'],
+  credentials: true
 }));
 
 // Increase request size limit for uploading images
@@ -35,6 +37,11 @@ setupSupabase().catch(err => {
   console.error('Error setting up Supabase tables:', err);
 });
 
+// Initialize health check table
+initHealthCheckTable().catch(err => {
+  console.error('Error initializing health check table:', err);
+});
+
 // Connect to database (legacy MongoDB support)
 connectDB().catch(err => {
   console.warn('MongoDB connection not available, using Supabase only');
@@ -44,6 +51,8 @@ connectDB().catch(err => {
 checkSupabaseConnection().then(connected => {
   if (!connected) {
     console.error('Could not connect to Supabase. Please check your configuration.');
+  } else {
+    console.log('Supabase connection successful');
   }
 });
 
@@ -54,17 +63,12 @@ SupabaseSubscriptionService.initializeSubscriptionsTable()
   .catch(err => console.error('Error initializing subscription table:', err));
 
 // Set up routes
-app.use('/api/auth', authRoutes);
-app.use('/api/adverts', advertRoutes);
-app.use('/api/donations', donationRoutes);
-app.use('/api/subscriptions', subscriptionRoutes);
-app.use('/api/health', healthRoutes);
-app.use('/', indexRoutes);
+app.use('/api', require('./routes'));
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../client/dist')));
-  
+
   app.get('*', (req, res) => {
     res.sendFile(path.resolve(__dirname, '../client/dist', 'index.html'));
   });

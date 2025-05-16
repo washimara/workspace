@@ -88,7 +88,8 @@ async function setupSupabase() {
             id: '00000000-0000-0000-0000-000000000000',
             email: 'demo@example.com',
             name: 'Demo User',
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            goodKarma: 0 // Initialize goodKarma field
           }]);
 
         if (createError) {
@@ -98,22 +99,23 @@ async function setupSupabase() {
         }
       }
 
-      // Add subscription columns to users table if they don't exist
-      console.log('Adding subscription columns to users table if needed...');
-      
+      // Add subscription columns and goodKarma to users table if they don't exist
+      console.log('Adding subscription columns and goodKarma to users table if needed...');
+
       // We'll attempt to add the columns by updating a user with these fields
       const { error: updateError } = await serviceSupabase
         .from('users')
         .update({
           subscription_status: 'free',
           subscription_start_date: null,
-          subscription_end_date: null
+          subscription_end_date: null,
+          goodKarma: 0 // Add goodKarma field
         })
         .eq('id', '00000000-0000-0000-0000-000000000000');
 
       if (updateError) {
         console.error('Error updating test user with subscription fields:', updateError);
-        
+
         // Try to insert/update a user with the fields
         const { error: upsertError } = await serviceSupabase
           .from('users')
@@ -124,17 +126,18 @@ async function setupSupabase() {
             created_at: new Date().toISOString(),
             subscription_status: 'free',
             subscription_start_date: null,
-            subscription_end_date: null
+            subscription_end_date: null,
+            goodKarma: 0 // Add goodKarma field
           }])
           .select();
 
         if (upsertError) {
           console.error('Error adding subscription columns via upsert:', upsertError);
         } else {
-          console.log('User subscription columns added via upsert');
+          console.log('User subscription columns and goodKarma added via upsert');
         }
       } else {
-        console.log('User subscription columns verified');
+        console.log('User subscription columns and goodKarma verified');
       }
 
     } catch (error) {
@@ -230,7 +233,7 @@ async function setupSupabase() {
 
         if (rpcError) {
           console.error('Error creating subscriptions table:', rpcError);
-          
+
           // If rpc fails, the exec_sql function might not be available
           // In this case, we can't create the table here, but the app will
           // try to handle this case later when using the table
@@ -247,9 +250,129 @@ async function setupSupabase() {
       console.error('Error setting up subscriptions table:', err);
     }
 
+    // Create the advert_upvotes table
+    await createAdvertUpvotesTable();
+
+    // Create the function for handling upvotes with karma
+    await createUpvoteKarmaFunction();
+
     console.log('Supabase setup completed');
   } catch (error) {
     console.error('Error setting up Supabase:', error);
+  }
+}
+
+// Add this function to create the advert_upvotes table
+async function createAdvertUpvotesTable() {
+  console.log('Setting up advert_upvotes table...');
+  
+  try {
+    // Check if the table exists first
+    const { error: checkError } = await serviceSupabase
+      .from('advert_upvotes')
+      .select('advert_id')
+      .limit(1);
+    
+    // If we get a specific error about the table not existing, create it
+    if (checkError && checkError.code === '42P01') {
+      console.log('advert_upvotes table does not exist, creating it...');
+      
+      // Create the table using raw SQL
+      const { error: createError } = await serviceSupabase.rpc('raw_sql', {
+        query: `
+          CREATE TABLE IF NOT EXISTS public.advert_upvotes (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            advert_id UUID NOT NULL REFERENCES public.adverts(id) ON DELETE CASCADE,
+            user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(advert_id, user_id)
+          );
+          
+          ALTER TABLE public.advert_upvotes ENABLE ROW LEVEL SECURITY;
+          
+          CREATE POLICY "Users can view their own upvotes"
+            ON public.advert_upvotes
+            FOR SELECT
+            USING (auth.uid() = user_id);
+            
+          CREATE POLICY "Users can insert their own upvotes"
+            ON public.advert_upvotes
+            FOR INSERT
+            WITH CHECK (auth.uid() = user_id);
+            
+          CREATE POLICY "Users can delete their own upvotes"
+            ON public.advert_upvotes
+            FOR DELETE
+            USING (auth.uid() = user_id);
+        `
+      });
+      
+      if (createError) {
+        console.error('Error creating advert_upvotes table:', createError);
+        throw createError;
+      }
+      
+      console.log('advert_upvotes table created successfully');
+    } else if (checkError) {
+      console.error('Error checking advert_upvotes table:', checkError);
+    } else {
+      console.log('advert_upvotes table already exists');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error setting up advert_upvotes table:', error);
+    return false;
+  }
+}
+
+// Add this call to the setupSupabase function
+async function setupSupabase() {
+  console.log('Setting up Supabase tables...');
+
+  try {
+    // Create adverts table if it doesn't exist
+    // ... existing code ...
+    
+    // Create health_check table if it doesn't exist
+    // ... existing code ...
+    
+    // Create users table if it doesn't exist
+    // ... existing code ...
+    
+    // Create donations table if it doesn't exist
+    // ... existing code ...
+    
+    // Setup subscriptions table
+    // ... existing code ...
+    
+    // Create the advert_upvotes table
+    await createAdvertUpvotesTable();
+    
+    // Create the function for handling upvotes with karma
+    await createUpvoteKarmaFunction();
+    
+    console.log('Supabase setup completed');
+  } catch (error) {
+    console.error('Error setting up Supabase:', error);
+  }
+}
+
+// Add this function to the imports
+const { createUpvoteKarmaFunction } = require('./createKarmaFunction');
+
+// Then add this to the setupTables function before it returns
+async function setupTables() {
+  try {
+    // [existing code...]
+    
+    // Create the function for handling upvotes with karma
+    await createUpvoteKarmaFunction();
+    
+    return true;
+  } catch (error) {
+    console.error('Error setting up tables:', error);
+    throw error;
   }
 }
 

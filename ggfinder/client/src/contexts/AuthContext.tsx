@@ -39,7 +39,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     try {
       const response = await apiLogin({ email, password });
-      setUser(response.user);
+      
+      // Make sure we're storing goodKarma from the response
+      const userData = {
+        _id: response.user._id,
+        email: response.user.email,
+        name: response.user.name,
+        has_premium_access: response.user.has_premium_access,
+        goodKarma: response.user.goodKarma || 0 // Ensure goodKarma is included
+      };
+      
+      setUser(userData);
+      localStorage.setItem('accessToken', response.accessToken);
+      localStorage.setItem('refreshToken', response.refreshToken);
+      return userData;
     } catch (error) {
       throw error;
     } finally {

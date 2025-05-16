@@ -80,10 +80,16 @@ export function EngagementMetrics({
     }
 
     try {
+      console.log(`[ENGAGEMENT] Starting upvote for advert ${advertId}`);
+      console.log(`[ENGAGEMENT] Current state - isUpvoted: ${isUpvoted}, upvoteCount: ${upvoteCount}`);
+
       setIsUpvoting(true);
       const response = await upvoteAdvert(advertId);
+      console.log(`[ENGAGEMENT] Upvote response:`, response);
+
       setIsUpvoted(response.upvoted);
       setUpvoteCount(response.upvotes);
+      console.log(`[ENGAGEMENT] After upvote - isUpvoted: ${response.upvoted}, upvoteCount: ${response.upvotes}`);
 
       // Save post to saved posts when upvoted
       if (response.upvoted) {
@@ -92,6 +98,7 @@ export function EngagementMetrics({
         if (!savedPosts.includes(advertId)) {
           savedPosts.push(advertId);
           localStorage.setItem('savedPosts', JSON.stringify(savedPosts));
+          console.log(`[ENGAGEMENT] Added advert ${advertId} to savedPosts`);
         }
 
         toast({
@@ -103,13 +110,25 @@ export function EngagementMetrics({
         const savedPosts = JSON.parse(localStorage.getItem('savedPosts') || '[]');
         const updatedSavedPosts = savedPosts.filter((id: string) => id !== advertId);
         localStorage.setItem('savedPosts', JSON.stringify(updatedSavedPosts));
+        console.log(`[ENGAGEMENT] Removed advert ${advertId} from savedPosts`);
       }
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      console.error(`[ENGAGEMENT] Error in handleUpvote:`, error);
+
+      // Check if this is the special case of trying to upvote own post
+      if (error.cannotUpvoteOwn) {
+        toast({
+          title: "Cannot upvote own post",
+          description: "You cannot upvote your own posts. Try upvoting posts from other users!",
+          variant: "warning",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsUpvoting(false);
     }

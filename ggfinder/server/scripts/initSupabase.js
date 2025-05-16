@@ -44,6 +44,7 @@ async function initSupabase() {
             email: 'demo@example.com',
             name: 'Demo User',
             has_premium_access: false,
+            goodKarma: 0, // Initialize goodKarma field
             created_at: new Date().toISOString()
           }
         ]);

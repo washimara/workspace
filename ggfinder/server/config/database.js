@@ -12,17 +12,20 @@ exports.checkSupabaseConnection = async () => {
 
     if (error) {
       console.error('Supabase health check table error:', error);
-      
+
       // Try to create the table if it doesn't exist
       if (error.code === '42P01') { // relation does not exist
         console.log('Attempting to create health_check table...');
-        
+
         try {
           // Use the REST API to create a table rather than SQL
           const { error: createError } = await supabase
             .from('health_check')
-            .insert([{ status: 'OK' }]);
-            
+            .insert([{ 
+              status: 'OK', 
+              created_at: new Date().toISOString() 
+            }]);
+
           if (createError) {
             console.error('Failed to create health_check table:', createError);
             return false;
@@ -35,7 +38,23 @@ exports.checkSupabaseConnection = async () => {
           return false;
         }
       }
-      
+
+      return false;
+    }
+
+    // Update the status to ensure the table is writable, but don't try to update updated_at
+    try {
+      const { error: updateError } = await supabase
+        .from('health_check')
+        .update({ status: 'OK' })
+        .eq('status', 'OK');
+
+      if (updateError) {
+        console.error('Failed to update health check entry:', updateError);
+        return false;
+      }
+    } catch (updateErr) {
+      console.error('Error updating health check entry:', updateErr);
       return false;
     }
 

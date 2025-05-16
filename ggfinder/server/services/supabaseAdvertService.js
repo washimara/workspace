@@ -281,78 +281,107 @@ class SupabaseAdvertService {
   
   async delete(id, userId) {
     try {
-      console.log(`Starting delete operation for advert ${id} by user ${userId}`);
+      console.log(`[SupabaseAdvertService] Deleting advert ${id} by user ${userId}`);
 
-      // First get the current advert
-      const { data: existingAdvert, error: fetchError } = await supabase
-        .from(this.tableName)
-        .select('*')
+      // First get the advert to verify ownership
+      const { data: advert, error: advertError } = await supabase
+        .from('adverts')
+        .select('user_id, upvotes')
         .eq('id', id)
         .single();
 
-      if (fetchError) {
-        this.log.error(`Error fetching advert ${id} for deletion`, fetchError);
-        throw new Error(`Failed to fetch advert: ${fetchError.message}`);
+      if (advertError) {
+        console.error(`[SupabaseAdvertService] Error fetching advert:`, advertError);
+        throw new Error(`Failed to fetch advert: ${advertError.message}`);
       }
 
-      if (!existingAdvert) {
+      if (!advert) {
         throw new Error('Advert not found');
       }
 
-      // Log the comparison for debugging
-      console.log(`Advert ${id} belongs to user: ${existingAdvert.user_id}`);
-      console.log(`Request from user: ${userId}`);
-      console.log(`Comparing: "${existingAdvert.user_id}" with "${userId}"`);
-
-      // Check if user owns the advert - compare as strings to avoid type issues
-      if (String(existingAdvert.user_id) !== String(userId)) {
-        console.log('Authorization failed: User IDs do not match');
+      if (advert.user_id !== userId) {
         throw new Error('Not authorized to delete this advert');
       }
 
-      console.log(`Executing delete operation for advert ${id}`);
-      
-      // IMPORTANT CHANGE: Use serviceSupabase for delete operation to bypass RLS
-      const { error } = await serviceSupabase
-        .from(this.tableName)
+      // If the advert has upvotes, get the author's current karma
+      let authorKarma = 0;
+      if (advert.upvotes > 0) {
+        const { data: authorData, error: authorError } = await serviceSupabase
+          .from('users')
+          .select('goodKarma')
+          .eq('id', advert.user_id)
+          .single();
+
+        if (!authorError && authorData) {
+          authorKarma = authorData.goodKarma || 0;
+          console.log(`[SupabaseAdvertService] Current karma for user ${advert.user_id}: ${authorKarma}`);
+        } else {
+          console.error(`[SupabaseAdvertService] Error getting author karma:`, authorError);
+        }
+      }
+
+      // Log that we're preserving karma
+      console.log(`[SupabaseAdvertService] Deleting advert with ${advert.upvotes || 0} upvotes. User karma will be preserved.`);
+
+      // Delete all upvote records for this advert
+      const { error: upvoteDeleteError } = await serviceSupabase
+        .from('advert_upvotes')
+        .delete()
+        .eq('advert_id', id);
+
+      if (upvoteDeleteError) {
+        console.error(`[SupabaseAdvertService] Error deleting upvote records:`, upvoteDeleteError);
+        // Continue with deletion even if upvote records can't be deleted
+        // This is to prevent orphaned adverts
+      }
+
+      // Delete the advert
+      const { error: deleteError } = await supabase
+        .from('adverts')
         .delete()
         .eq('id', id);
 
-      if (error) {
-        console.error(`Error in Supabase delete operation:`, error);
-        this.log.error(`Error deleting advert ${id}`, error);
-        throw new Error(`Failed to delete advert: ${error.message}`);
+      if (deleteError) {
+        console.error(`[SupabaseAdvertService] Error deleting advert:`, deleteError);
+        throw new Error(`Failed to delete advert: ${deleteError.message}`);
       }
 
-      console.log(`Successfully deleted advert ${id}`);
-
-      // Decrement user's advert count
-      try {
-        const { data: userData, error: userError } = await supabase
+      // After deletion, if the advert had upvotes, ensure the author's karma is preserved
+      if (advert.upvotes > 0) {
+        // Check the current karma after deletion
+        const { data: currentAuthorData, error: currentAuthorError } = await serviceSupabase
           .from('users')
-          .select('advert_count')
-          .eq('id', userId)
+          .select('goodKarma')
+          .eq('id', advert.user_id)
           .single();
 
-        if (!userError && userData) {
-          const { error: updateError } = await serviceSupabase
-            .from('users')
-            .update({ advert_count: Math.max(0, userData.advert_count - 1) })
-            .eq('id', userId);
-
-          if (updateError) {
-            this.log.error('Error updating user advert count', updateError);
-            // We don't throw here since the advert was deleted successfully
+        if (!currentAuthorError && currentAuthorData) {
+          const currentKarma = currentAuthorData.goodKarma || 0;
+          console.log(`[SupabaseAdvertService] Karma after deletion: ${currentKarma}`);
+          
+          // If karma was reduced, restore it
+          if (currentKarma < authorKarma) {
+            console.log(`[SupabaseAdvertService] Restoring karma from ${currentKarma} to ${authorKarma}`);
+            
+            const { error: karmaError } = await serviceSupabase
+              .from('users')
+              .update({ goodKarma: authorKarma })
+              .eq('id', advert.user_id);
+              
+            if (karmaError) {
+              console.error(`[SupabaseAdvertService] Error restoring karma:`, karmaError);
+            } else {
+              console.log(`[SupabaseAdvertService] Successfully restored karma to ${authorKarma}`);
+            }
           }
+        } else {
+          console.error(`[SupabaseAdvertService] Error checking current karma:`, currentAuthorError);
         }
-      } catch (countError) {
-        console.log('Error updating advert count, but deletion was successful:', countError);
       }
 
-      return true;
+      return { success: true };
     } catch (error) {
-      console.error(`Detailed error in delete method:`, error);
-      this.log.error(`Error in delete method for ID ${id}`, error);
+      console.error(`[SupabaseAdvertService] Error in delete:`, error);
       throw error;
     }
   }
@@ -398,61 +427,128 @@ class SupabaseAdvertService {
     }
   }
   
-  async upvoteAdvert(id, userId) {
+  async upvoteAdvert(advertId, userId) {
     try {
-      // First get the current advert
-      const { data: advert, error: fetchError } = await supabase
+      console.log(`Processing upvote in service for advert ${advertId} by user ${userId}`);
+    
+      // Check if advert exists
+      const { data: advert, error: advertError } = await supabase
         .from(this.tableName)
         .select('*')
-        .eq('id', id)
+        .eq('id', advertId)
         .single();
-      
-      if (fetchError) {
-        this.log.error(`Error fetching advert ${id} for upvote`, fetchError);
-        throw new Error(`Failed to fetch advert: ${fetchError.message}`);
+
+      if (advertError) {
+        this.log.error(`Error fetching advert ${advertId}`, advertError);
+        throw new Error(`Failed to fetch advert: ${advertError.message}`);
       }
-      
+
       if (!advert) {
         throw new Error('Advert not found');
       }
-      
+
       // Check if user has already upvoted
-      const upvotedBy = advert.upvoted_by || [];
+      const { data: upvote, error: upvoteError } = await supabase
+        .from('advert_upvotes')
+        .select('*')
+        .eq('advert_id', advertId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (upvoteError) {
+        this.log.error(`Error checking upvote status for advert ${advertId}`, upvoteError);
+        throw new Error(`Failed to check upvote status: ${upvoteError.message}`);
+      }
+
       let upvoted = false;
-      let newUpvotes = advert.upvotes || 0;
-      let newUpvotedBy = [...upvotedBy];
-      
-      const userIdIndex = upvotedBy.indexOf(userId);
-      if (userIdIndex === -1) {
+      let upvoteCount = advert.upvotes || 0;
+
+      if (!upvote) {
         // Add upvote
-        newUpvotedBy.push(userId);
-        newUpvotes += 1;
+        const { error: addError } = await supabase
+          .from('advert_upvotes')
+          .insert([{ 
+            advert_id: advertId, 
+            user_id: userId, 
+            created_at: new Date().toISOString() 
+          }]);
+
+        if (addError) {
+          this.log.error(`Error adding upvote for advert ${advertId}`, addError);
+          throw new Error(`Failed to add upvote: ${addError.message}`);
+        }
+
+        // Increment upvote count
+        upvoteCount += 1;
+        const { error: updateError } = await supabase
+          .from(this.tableName)
+          .update({ upvotes: upvoteCount })
+          .eq('id', advertId);
+
+        if (updateError) {
+          this.log.error(`Error updating upvote count for advert ${advertId}`, updateError);
+          throw new Error(`Failed to update upvote count: ${updateError.message}`);
+        }
+
+        // Increment author's karma
+        const { error: karmaError } = await serviceSupabase
+          .from('users')
+          .update({ goodKarma: serviceSupabase.raw('goodKarma + 1') })
+          .eq('id', advert.user_id);
+
+        if (karmaError) {
+          this.log.error(`Error updating karma for user ${advert.user_id}`, karmaError);
+          // Don't throw - continue with the upvote operation
+        }
+
         upvoted = true;
       } else {
         // Remove upvote
-        newUpvotedBy.splice(userIdIndex, 1);
-        newUpvotes = Math.max(0, newUpvotes - 1);
+        const { error: removeError } = await supabase
+          .from('advert_upvotes')
+          .delete()
+          .eq('advert_id', advertId)
+          .eq('user_id', userId);
+
+        if (removeError) {
+          this.log.error(`Error removing upvote for advert ${advertId}`, removeError);
+          throw new Error(`Failed to remove upvote: ${removeError.message}`);
+        }
+
+        // Decrement upvote count
+        upvoteCount = Math.max(0, upvoteCount - 1);
+        const { error: updateError } = await supabase
+          .from(this.tableName)
+          .update({ upvotes: upvoteCount })
+          .eq('id', advertId);
+
+        if (updateError) {
+          this.log.error(`Error updating upvote count for advert ${advertId}`, updateError);
+          throw new Error(`Failed to update upvote count: ${updateError.message}`);
+        }
+
+        // Decrement author's karma
+        const { error: karmaError } = await serviceSupabase
+          .from('users')
+          .update({
+            goodKarma: serviceSupabase.raw('GREATEST(goodKarma - 1, 0)')
+          })
+          .eq('id', advert.user_id);
+
+        if (karmaError) {
+          this.log.error(`Error updating karma for user ${advert.user_id}`, karmaError);
+          // Don't throw - continue with the upvote operation
+        }
+
+        upvoted = false;
       }
-      
-      const { error } = await supabase
-        .from(this.tableName)
-        .update({
-          upvotes: newUpvotes,
-          upvoted_by: newUpvotedBy
-        })
-        .eq('id', id);
-      
-      if (error) {
-        this.log.error(`Error upvoting advert ${id}`, error);
-        throw new Error(`Failed to upvote advert: ${error.message}`);
-      }
-      
+
       return {
-        upvotes: newUpvotes,
+        upvotes: upvoteCount,
         upvoted
       };
     } catch (error) {
-      this.log.error(`Error in upvoteAdvert method for ID ${id}`, error);
+      this.log.error(`Error in upvoteAdvert method for ID ${advertId}`, error);
       throw error;
     }
   }

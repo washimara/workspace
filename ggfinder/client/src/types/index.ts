@@ -1,7 +1,9 @@
 export interface User {
   _id: string;
   email: string;
-  name?: string;
+  name: string;
+  has_premium_access?: boolean;
+  goodKarma?: number;
 }
 
 export interface Post {

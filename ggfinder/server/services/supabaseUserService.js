@@ -51,6 +51,7 @@ class SupabaseUserService {
             email,
             name,
             has_premium_access: false,
+            goodKarma: 0, // Initialize goodKarma to 0
             created_at: new Date().toISOString()
           }
         ])
@@ -62,7 +63,8 @@ class SupabaseUserService {
       return {
         _id: userData.id, // Keep consistent with MongoDB _id field
         email: userData.email,
-        name: userData.name
+        name: userData.name,
+        goodKarma: userData.goodKarma || 0
       };
     } catch (error) {
       throw new Error(`Error creating user: ${error.message}`);
@@ -90,7 +92,8 @@ class SupabaseUserService {
         _id: data.id,
         email: data.email,
         name: data.name,
-        has_premium_access: data.has_premium_access || false
+        has_premium_access: data.has_premium_access || false,
+        goodKarma: data.goodKarma || 0
       };
     } catch (error) {
       throw new Error(`Error getting user by email: ${error.message}`);
@@ -118,7 +121,8 @@ class SupabaseUserService {
         _id: data.id,
         email: data.email,
         name: data.name,
-        has_premium_access: data.has_premium_access || false
+        has_premium_access: data.has_premium_access || false,
+        goodKarma: data.goodKarma || 0
       };
     } catch (error) {
       throw new Error(`Error getting user by ID: ${error.message}`);
@@ -143,7 +147,7 @@ class SupabaseUserService {
         // If the error is about unconfirmed email, try to confirm it automatically for development
         if (authError.message && authError.message.includes("Email not confirmed")) {
           console.log(`Auto-confirming email for development: ${email}`);
-          
+
           // For development, create the user record anyway
           // Check if user already exists in our custom table
           const { data: existingUser } = await supabase
@@ -151,19 +155,20 @@ class SupabaseUserService {
             .select('*')
             .eq('email', email)
             .maybeSingle();
-            
+
           if (existingUser) {
             return {
               _id: existingUser.id,
               email: existingUser.email,
               name: existingUser.name,
-              has_premium_access: existingUser.has_premium_access || false
+              has_premium_access: existingUser.has_premium_access || false,
+              goodKarma: existingUser.goodKarma || 0
             };
           }
-          
+
           // Try to get user from auth
           const { data: userData } = await supabase.auth.admin.getUserByEmail(email);
-          
+
           if (userData && userData.user) {
             // Create user in our custom table
             const { data: newUserData, error: newUserError } = await supabase
@@ -174,6 +179,7 @@ class SupabaseUserService {
                   email: userData.user.email,
                   name: userData.user.email.split('@')[0], // Default name from email
                   has_premium_access: false,
+                  goodKarma: 0, // Initialize goodKarma to 0
                   created_at: new Date().toISOString()
                 }
               ])
@@ -185,12 +191,13 @@ class SupabaseUserService {
                 _id: newUserData.id,
                 email: newUserData.email,
                 name: newUserData.name,
-                has_premium_access: newUserData.has_premium_access || false
+                has_premium_access: newUserData.has_premium_access || false,
+                goodKarma: newUserData.goodKarma || 0
               };
             }
           }
         }
-        
+
         throw new Error(authError.message);
       }
 
@@ -215,6 +222,7 @@ class SupabaseUserService {
               email: authData.user.email,
               name: authData.user.email.split('@')[0], // Default name from email
               has_premium_access: false,
+              goodKarma: 0, // Initialize goodKarma to 0
               created_at: new Date().toISOString()
             }
           ])
@@ -227,7 +235,8 @@ class SupabaseUserService {
           _id: newUserData.id,
           email: newUserData.email,
           name: newUserData.name,
-          has_premium_access: newUserData.has_premium_access || false
+          has_premium_access: newUserData.has_premium_access || false,
+          goodKarma: newUserData.goodKarma || 0
         };
       }
 
@@ -235,7 +244,8 @@ class SupabaseUserService {
         _id: userData.id,
         email: userData.email,
         name: userData.name,
-        has_premium_access: userData.has_premium_access || false
+        has_premium_access: userData.has_premium_access || false,
+        goodKarma: userData.goodKarma || 0
       };
     } catch (error) {
       throw new Error(`Authentication error: ${error.message}`);

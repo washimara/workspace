@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { getAdvertById } from "@/api/adverts"
 import { Advert } from "@/types"
 import { useToast } from "@/hooks/useToast"
-import { PostCard } from "@/components/PostCard"
+import { AdvertCard } from "@/components/AdvertCard"
 import { Loader2 } from "lucide-react"
 import { useThemeContext } from "@/contexts/ThemeContext"
 import { useTheme } from "@/components/ui/theme-provider"
@@ -41,6 +41,8 @@ export function SavedPosts() {
         setLoading(true)
         const savedPostIds = JSON.parse(localStorage.getItem('savedPosts') || '[]')
 
+        console.log("SavedPosts: Fetching saved posts with IDs:", savedPostIds);
+
         if (savedPostIds.length === 0) {
           setSavedPosts([])
           setLoading(false)
@@ -49,7 +51,9 @@ export function SavedPosts() {
 
         const postsPromises = savedPostIds.map(async (id: string) => {
           try {
+            console.log(`SavedPosts: Fetching advert with ID: ${id}`);
             const response = await getAdvertById(id)
+            console.log(`SavedPosts: Received advert for ID ${id}:`, response.advert);
             return response.advert
           } catch (error) {
             console.error(`Failed to fetch post ${id}:`, error)
@@ -58,6 +62,7 @@ export function SavedPosts() {
         })
 
         const posts = await Promise.all(postsPromises)
+        console.log("SavedPosts: All fetched adverts:", posts);
         setSavedPosts(posts.filter(Boolean) as Advert[])
       } catch (error: any) {
         toast({
@@ -96,7 +101,7 @@ export function SavedPosts() {
     <div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {savedPosts.map((post) => (
-          <PostCard key={post._id} advert={post} />
+          <AdvertCard key={post._id} advert={post} />
         ))}
       </div>
     </div>

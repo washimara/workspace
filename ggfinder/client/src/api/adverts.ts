@@ -139,10 +139,28 @@ export const getUserAdverts = async () => {
 // Response: { upvotes: number, upvoted: boolean }
 export const upvoteAdvert = async (id: string) => {
   try {
-    const response = await api.post(`/api/adverts/${id}/upvote`);
+    console.log(`[CLIENT] Upvoting advert with ID: ${id}`);
+    const url = `/api/adverts/${id}/upvote`;
+    console.log(`[CLIENT] Sending POST request to: ${url}`);
+    
+    const response = await api.post(url);
+    console.log(`[CLIENT] Upvote response:`, response.data);
     return response.data;
   } catch (error: any) {
-    console.error(error);
+    console.error(`[CLIENT] Error upvoting advert ${id}:`, error);
+    
+    // Check if the error response contains the cannotUpvoteOwn flag
+    if (error.response?.data?.cannotUpvoteOwn) {
+      // Create a custom error object and set the flag directly on it
+      const customError = new Error(error.response.data.message);
+      // This is important - make the property accessible directly on the error
+      Object.defineProperty(customError, 'cannotUpvoteOwn', {
+        value: true,
+        enumerable: true
+      });
+      throw customError;
+    }
+    
     throw new Error(error?.response?.data?.message || error.message);
   }
 };
@@ -181,10 +199,13 @@ export const getShareableLink = async (id: string) => {
 // Response: { upvotes: number, views: number, upvoted: boolean }
 export const getAdvertStats = async (id: string) => {
   try {
+    console.log(`[CLIENT] Getting stats for advert ${id}`);
+    // Fix: add /api prefix to the endpoint
     const response = await api.get(`/api/adverts/${id}/stats`);
+    console.log(`[CLIENT] Stats response:`, response.data);
     return response.data;
   } catch (error: any) {
-    console.error(error);
+    console.error(`[CLIENT] Error getting advert stats for ${id}:`, error);
     throw new Error(error?.response?.data?.message || error.message);
   }
 };
